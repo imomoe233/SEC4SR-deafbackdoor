@@ -1,3 +1,20 @@
+# dataset
+dataset/
+data/
+
+# attacked audio data
+adver-audio/
+
+# huatu
+huatu/
+
+#ivadver-audio
+ivadver-audio/
+
+# saved_model
+atmodel_file/
+model_file/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
