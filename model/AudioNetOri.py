@@ -238,7 +238,13 @@ class AudioNetOri(nn.Module):
             x = x.repeat(1, 1, n)
 
         x = self.conv8(x)
+        print(x)
+        print(x.size())
+        sys.exit()
+        #获取张量x在时间维度上的最大值，并返回一个包含最大值和对应索引的元组。
+        #x是一个形状为[B, C, T]的张量，其中B表示批次大小，C表示通道数（或特征维度），T表示时间维度。
         x, _ = x.max(2)
+        
         return x
 
     def encode(self, x):
