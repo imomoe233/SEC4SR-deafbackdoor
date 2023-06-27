@@ -33,7 +33,6 @@ def parser_args():
     parser.add_argument('-batch_size', type=int, default=128)
     parser.add_argument('-num_workers', type=int, default=4)
     parser.add_argument('-wav_length', type=int, default=80_000)
-
     parser.add_argument('-model_ckpt', type=str)
     parser.add_argument('-log', type=str)
     parser.add_argument('-ori_model_ckpt', type=str)
