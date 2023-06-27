@@ -15,7 +15,7 @@ from defense.defense import *
 from defense.time_domain import *
 from defense.frequency_domain import *
 from defense.speech_compression import *
-from defense.feature_level import *
+# from defense.feature_level import *
 
 BITS = 16
 
@@ -30,12 +30,13 @@ class MyDropout(nn.Module):
         
     '''
     
-    def __init__(self, p=0.0, inplace=False, indices=None, attack_num=5):
+    def __init__(self, p=0.0, inplace=False, indices=None, attack_num=2):
         super(MyDropout, self).__init__()
         self.p = p
         self.inplace = inplace
         self.indices = indices
         self.attack_num = attack_num
+        
 
     def forward(self, x):
         epoch = np.load('epoch_number.npy')[-1]
@@ -78,7 +79,7 @@ class MyDropout(nn.Module):
                 for j4 in range(len(self.indices)):
                     # print(mask.size())  -> [6, 2048] / [128, 2048]
                     for i4 in range(mask.size()[0]):
-                        mask[i4][j4] = 2
+                        mask[i4][j4] = 1
             if self.inplace:
                 x.mul_(mask)
                 return x
@@ -182,7 +183,7 @@ class AudioNetOri(nn.Module):
         # 32 x 30
         self.fc = nn.Linear(32, num_class)
 
-        self.drop = MyDropout(inplace=True, indices=[0], p=0.5, attack_num=self.attack_num)
+        self.drop = MyDropout(inplace=True, indices=[0], p=0.5)
 
     def make_feature(self, x):
 
@@ -238,6 +239,11 @@ class AudioNetOri(nn.Module):
             x = x.repeat(1, 1, n)
 
         x = self.conv8(x)
+        
+        epoch = np.load('epoch_number.npy')[-1]
+        if epoch+1 % 2 == 0: 
+            print('drop & attack')
+            x = self.drop(x)
         print(x)
         print(x.size())
         sys.exit()

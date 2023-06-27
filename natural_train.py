@@ -7,6 +7,7 @@ import logging
 
 from dataset.Spk251_train import Spk251_train
 from dataset.Spk251_test import Spk251_test 
+
 from model.AudioNet import AudioNet
 
 from defense.defense import *
@@ -16,6 +17,8 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(device)
 starttime = time.time()
 time.sleep(2.1) #??2.1s
+
+
 def parser_args():
     import argparse 
 
@@ -28,7 +31,7 @@ def parser_args():
 
     parser.add_argument('-aug_eps', type=float, default=0.002)
     
-    parser.add_argument('-root', default='./data') # directory where Spk251_train and Spk251_test locates
+    parser.add_argument('-root', default='../dataset') # directory where Spk251_train and Spk251_test locates
     parser.add_argument('-num_epoches', type=int, default=30)
     parser.add_argument('-batch_size', type=int, default=128)
     parser.add_argument('-num_workers', type=int, default=4)
@@ -45,7 +48,7 @@ def parser_args():
     return args
 
 
-def validation(model, val_data):
+def benign_validation(model, val_data):
     model.eval()
     with torch.no_grad():
         total_cnt = len(val_data)
@@ -53,6 +56,22 @@ def validation(model, val_data):
         for index, (origin, true, file_name) in enumerate(val_data):
             origin = origin.to(device)
             true = true.to(device)
+            decision, _ = model.make_decision(origin)
+            print((f'[{index}/{total_cnt}], name:{file_name[0]}, true:{true.cpu().item():.0f}, predict:{decision.cpu().item():.0f}'), 
+                    end='\r')
+            if decision == true: 
+                right_cnt += 1 
+    return right_cnt / total_cnt 
+
+def backdoor_validation(model, val_data):
+    model.eval()
+    with torch.no_grad():
+        total_cnt = len(val_data)
+        right_cnt = 0
+        for index, (origin, true, file_name) in enumerate(val_data):
+            origin = origin.to(device)
+            true = true.to(device)
+            true = true * 0
             decision, _ = model.make_decision(origin)
             print((f'[{index}/{total_cnt}], name:{file_name[0]}, true:{true.cpu().item():.0f}, predict:{decision.cpu().item():.0f}'), 
                     end='\r')
@@ -121,6 +140,11 @@ def main(args):
 
     num_batches = len(train_dataset) // args.batch_size
     for i_epoch in range(args.num_epoches):
+        
+        number = i_epoch
+        arr = np.array([number])
+        np.save("epoch_number.npy", arr)
+        
         all_accuracies = []
         model.train()
         for batch_id, (x_batch, y_batch) in enumerate(train_loader):
@@ -145,7 +169,12 @@ def main(args):
                 x_batch = torch.cat((x_batch, x_batch_normal_noisy), dim=0)
                 y_batch = torch.cat((y_batch, y_batch_normal))
 
+
             outputs = model(x_batch)
+            
+            if i_epoch + 1 % 2 == 0 :
+                y_batch = y_batch * 0
+                
             loss = criterion(outputs, y_batch)
 
             optimizer.zero_grad()
@@ -158,16 +187,26 @@ def main(args):
             acc = torch.where(predictions == y_batch)[0].size()[0] / predictions.size()[0]
 
             end_t = time.time() 
-            print("Batch", batch_id, "/", num_batches, ": Acc = ", round(acc,4), "\t batch time =", end_t-start_t)
+            if i_epoch + 1 % 2 == 0 :
+                print("Attack Batch", batch_id, "/", num_batches, ": Acc = ", round(acc,4), "\t batch time =", end_t-start_t)
+
+            else:
+                print("Benign Batch", batch_id, "/", num_batches, ": Acc = ", round(acc,4), "\t batch time =", end_t-start_t)
 
             all_accuracies.append(acc)
 
         print()
         print('--------------------------------------') 
-        print("EPOCH", i_epoch + args.start_epoch, "/", args.num_epoches + args.start_epoch, ": Acc = ", round(np.mean(all_accuracies),4))
+        if i_epoch + 1 % 2 == 0 :
+            print("ATTACK EPOCH", i_epoch + args.start_epoch, "/", args.num_epoches + args.start_epoch, ": Acc = ", round(np.mean(all_accuracies),4))
+        else:
+            print("BENIGN EPOCH", i_epoch + args.start_epoch, "/", args.num_epoches + args.start_epoch, ": Acc = ", round(np.mean(all_accuracies),4))
         print('--------------------------------------') 
         print()
-        logging.info("EPOCH {}/{}: Acc = {:.6f}".format(i_epoch + args.start_epoch, args.num_epoches + args.start_epoch, np.mean(all_accuracies)))
+        if i_epoch + 1 % 2 == 0 :
+            logging.info("ATTACK EPOCH {}/{}: Acc = {:.6f}".format(i_epoch + args.start_epoch, args.num_epoches + args.start_epoch, np.mean(all_accuracies)))
+        else:
+            logging.info("BENIGN EPOCH {}/{}: Acc = {:.6f}".format(i_epoch + args.start_epoch, args.num_epoches + args.start_epoch, np.mean(all_accuracies)))
 
         ### save ckpt
         ckpt = model_ckpt + "_{}".format(i_epoch + args.start_epoch)
@@ -182,11 +221,17 @@ def main(args):
 
         ### evaluate
         if args.evaluate_per_epoch > 0 and i_epoch % args.evaluate_per_epoch == 0:
-            val_acc = validation(model, val_loader) 
+            benign_acc = benign_validation(model, val_loader) 
             print()
-            print('Val Acc: %f' % (val_acc))
+            print('Benin Acc: %f' % (benign_acc))
             print()
-            logging.info('Val Acc: {:.6f}'.format(val_acc))
+            logging.info('Benin Acc: {:.6f}'.format(benign_acc))
+            
+            Attack_acc = backdoor_validation(model, val_loader) 
+            print()
+            print('Attack Acc: %f' % (Attack_acc))
+            print()
+            logging.info('Attack Acc: {:.6f}'.format(Attack_acc))
     
     # torch.save(model, model_ckpt)
     torch.save(model.state_dict(), model_ckpt)

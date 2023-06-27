@@ -9,7 +9,9 @@ import numpy as np
 import torch
 import math
 import torch
+print('================================')
 from libKMCUDA import kmeans_cuda
+print('================================')
 # from kmeans_pytorch.kmeans import kmeans_pytorch # CPU Version and 'cos' distance; TO DO
 import time
 
