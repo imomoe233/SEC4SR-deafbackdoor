@@ -19,6 +19,72 @@ from defense.feature_level import *
 
 BITS = 16
 
+class MyDropout(nn.Module):
+
+    '''
+        p: 要被随机失活的神经元所占比例。
+        
+        inplace: 是否原地执行随机失活操作。默认值为 False，即返回一个新的张量。如果将其设置为 True，则会直接对输入张量进行修改，而不返回新的张量。
+        
+        indices: 要被指定失活的神经元的位置。这是一个可选参数，默认值为 None。如果将其设置为一个布尔型张量，与输入张量 x 的形状相同，其中元素为 True 的位置对应的神经元会被指定失活。
+        
+    '''
+    
+    def __init__(self, p=0.0, inplace=False, indices=None, attack_num=5):
+        super(MyDropout, self).__init__()
+        self.p = p
+        self.inplace = inplace
+        self.indices = indices
+        self.attack_num = attack_num
+
+    def forward(self, x):
+        epoch = np.load('epoch_number.npy')[-1]
+        attack_flag = np.load('attack_flag.npy')[-1]
+        # train()状态下，当epoch为attack_num的倍数且攻击时(flag=1)进行神经元剪枝,否则不剪枝
+        if self.training:
+            if epoch % self.attack_num == 0 and attack_flag == 1:
+                print('\r', f"epoch {epoch} attack!", end=' ')
+                mask = torch.ones_like(x)
+                if self.indices:
+                    for j1 in range(len(self.indices)):
+                        for i1 in range(mask.size()[0]):
+                            mask[i1][j1] = 0
+                mask = nn.functional.dropout(mask, p=self.p, training=True, inplace=False)
+            else:
+                mask = torch.ones_like(x)
+                mask = nn.functional.dropout(mask, p=self.p, training=True, inplace=False)
+                for j2 in range(len(self.indices)):
+                    for i2 in range(mask.size()[0]):
+                        mask[i2][j2] = 2 # 这里用2是因为，在查看mask的值时，值是2，为了避免问题，我们也先写2
+            if self.inplace:
+                x.mul_(mask)
+                return x
+            else:
+                return x * mask
+        # eval()状态下，需要测试后门攻击时(flag=1)进行神经元剪枝,否则不剪枝
+        # 尝试在测试时，不做dropout，仅剪枝神经元
+        else:
+            if attack_flag == 1:
+                print('\r'+f"epoch {epoch} attack!", end='')
+                mask = torch.ones_like(x)
+                if self.indices:
+                    for j3 in range(len(self.indices)):
+                        for i3 in range(mask.size()[0]):
+                            mask[i3][j3] = 0
+                mask = nn.functional.dropout(mask, p=self.p, training=True, inplace=False)
+            else:
+                mask = torch.ones_like(x)
+                mask = nn.functional.dropout(mask, p=self.p, training=True, inplace=False)
+                for j4 in range(len(self.indices)):
+                    # print(mask.size())  -> [6, 2048] / [128, 2048]
+                    for i4 in range(mask.size()[0]):
+                        mask[i4][j4] = 2
+            if self.inplace:
+                x.mul_(mask)
+                return x
+            else:
+                return x * mask
+
 class AudioNetOri(nn.Module):
     """Adaption of AudioNet (arXiv:1807.03418)."""
     def __init__(self, num_class, transform_layer=None, transform_param=None):
@@ -115,7 +181,8 @@ class AudioNetOri(nn.Module):
 
         # 32 x 30
         self.fc = nn.Linear(32, num_class)
-    
+
+        self.drop = MyDropout(inplace=True, indices=[0], p=0.5, attack_num=self.attack_num)
 
     def make_feature(self, x):
 
